@@ -1,61 +1,62 @@
 # playwright-runtime-guard
 
-Automatic **Console & Network Guard** for Playwright.
+**Console & Network Guard** automático para Playwright.
 
-Stop shipping green E2E tests that hide `console.error`, uncaught exceptions (`pageerror`), background `5xx` responses, or failed network requests. `playwright-runtime-guard` hooks into your Playwright `BrowserContext` (including popups and extra tabs) via an `auto: true` fixture or standalone helper and fails the test with an actionable report when unexpected runtime errors occur.
+Pare de aprovar testes E2E "verdes" que escondem `console.error`, exceções não tratadas (`pageerror`), respostas `5xx` em segundo plano ou requisições de rede falhadas. O `playwright-runtime-guard` se conecta automaticamente ao `BrowserContext` do Playwright (incluindo popups e abas extras) via fixture (`auto: true`) ou helper manual, falhando o teste com um relatório detalhado sempre que erros inesperados de runtime acontecerem.
 
-## Features
+## Recursos
 
-- **Zero-boilerplate auto-fixture**: Drop-in replacement `{ test, expect }` from `playwright-runtime-guard` or `extendTestWithGuard(yourCustomTest)`.
-- **Four runtime signals covered**:
-  - `console` errors (configurable `consoleTypes`, e.g. `['error', 'warning']`)
-  - Uncaught `pageerror` exceptions and unhandled promise rejections
-  - HTTP error responses (defaults to `5xx`; configurable to `'4xx+'`, status arrays, or custom predicates) with optional truncated JSON/text body snippet capture
-  - Failed network requests (`requestfailed`), automatically ignoring benign browser navigation cancellations (`net::ERR_ABORTED`) unless `includeAbortedRequests: true`
-- **Granular allowlists**: Match by substring, `RegExp`, structured rule objects (`url`, `status`, `method`, `resourceType`, `locationUrl`, `pageUrl`), or predicate functions.
-- **Scoped & one-shot exceptions**: Use `runtimeGuard.runAllowed(...)`, `runtimeGuard.allowOnce(...)`, or `runtimeGuard.allow(...)` inside individual test steps that intentionally trigger errors.
-- **Popup & multi-tab tracking**: Attaches at the `BrowserContext` level (and listens for `popup` events) so errors in new tabs or `window.open()` windows are never missed.
-- **Playwright HTML Report attachments**: Automatically attaches `runtime-guard-report.json` and `runtime-guard-report.md` on violations.
-- **Non-intrusive on existing test failures**: When a test already failed on a locator/assertion timeout, `runtime-guard` attaches the report and logs the violations without masking the original error (configurable via `failOnAlreadyFailedTest: true`).
+- **Fixture automática sem boilerplate**: Substituição direta de `{ test, expect }` via `playwright-runtime-guard`, ou composição com suas fixtures existentes via `extendTestWithGuard(seuTest)`.
+- **Quatro sinais de runtime monitorados**:
+  - Erros de `console` (`consoleTypes` configurável, padrão `['error']`)
+  - Exceções não tratadas (`pageerror`) e *unhandled promise rejections*
+  - Respostas HTTP com erro (padrão `5xx`; configurável para `'4xx+'`, lista de status ou predicado), com captura opcional de trecho do corpo JSON/texto
+  - Falhas de rede (`requestfailed`), ignorando automaticamente cancelamentos benignos de navegação (`net::ERR_ABORTED` / `NS_BINDING_ABORTED`), a menos que `includeAbortedRequests: true` seja definido
+- **Deduplicação de ruído do navegador**: Suprime mensagens sintéticas do browser como `"Failed to load resource: the server responded with a status of ..."` para que status `404` (ex.: `/favicon.ico`) e regras de `ignoreHttpErrors` não vazem como `console.error` duplicados.
+- **Allowlist granular**: Combine por substring, `RegExp`, objetos de regra (`url`, `status`, `method`, `resourceType`, `locationUrl`, `pageUrl`) ou funções predicado.
+- **Exceções pontuais e com escopo**: Use `runtimeGuard.runAllowed(...)`, `runtimeGuard.allowOnce(...)` ou `runtimeGuard.allow(...)` em etapas do teste que provocam erros propositalmente.
+- **Rastreamento de popups e múltiplas abas**: Monitora o `BrowserContext` inteiro e eventos `popup`, cobrindo novas abas e janelas abertas com `window.open()`.
+- **Anexos no relatório HTML do Playwright**: Anexa automaticamente `runtime-guard-report.json` e `runtime-guard-report.md` quando houver violações.
+- **Sem mascarar falhas anteriores**: Se o teste já tiver falhado por outro motivo (ex.: timeout de seletor ou assertion), o guard anexa e registra as violações no log sem sobrescrever o erro principal (configurável via `failOnAlreadyFailedTest: true`).
 
-## Installation
+## Instalação
 
 ```bash
 npm install -D playwright-runtime-guard
 ```
 
-> Peer dependency: `@playwright/test >= 1.40.0`
+> Dependência peer: `@playwright/test >= 1.40.0`
 
-## Quick Start
+## Como usar
 
-### 1. Drop-in fixture (`test` & `expect`)
+### 1. Uso direto com a fixture (`test` & `expect`)
 
 ```ts
 import { test, expect } from 'playwright-runtime-guard';
 
-test('checkout page loads cleanly', async ({ page }) => {
+test('página de checkout carrega sem erros', async ({ page }) => {
   await page.goto('/checkout');
   await expect(page.getByRole('heading', { name: 'Checkout' })).toBeVisible();
-  // Automatically fails in teardown if console.error, pageerror, 5xx, or requestfailed occurred!
+  // Falha automaticamente no teardown se ocorrer console.error, pageerror, 5xx ou requestfailed!
 });
 ```
 
-### 2. Custom project defaults (`createGuardTest` or `extendTestWithGuard`)
+### 2. Configuração padrão do projeto (`createGuardTest` ou `extendTestWithGuard`)
 
-Create a shared `fixtures.ts` in your test suite:
+Crie um arquivo compartilhado `fixtures.ts` na sua suíte de testes:
 
 ```ts
 // tests/fixtures.ts
 import { test as base } from '@playwright/test';
 import { extendTestWithGuard } from 'playwright-runtime-guard';
 
-const myBaseTest = base.extend<{ loggedInUser: string }>({
-  loggedInUser: async ({}, use) => {
+const baseComUsuario = base.extend<{ usuarioLogado: string }>({
+  usuarioLogado: async ({}, use) => {
     await use('alice@example.com');
   },
 });
 
-export const test = extendTestWithGuard(myBaseTest, {
+export const test = extendTestWithGuard(baseComUsuario, {
   failOnHttpStatus: '4xx+',
   ignoreHttpErrors: [
     { url: '/favicon.ico', status: 404 },
@@ -70,14 +71,14 @@ export const test = extendTestWithGuard(myBaseTest, {
 export { expect } from '@playwright/test';
 ```
 
-### 3. Per-file or per-describe overrides (`test.use`)
+### 3. Sobrescrita por arquivo ou bloco `describe` (`test.use`)
 
-Ignore lists passed via `test.use({ guardOptions })` are merged **additively** with your global defaults, while scalar options (`mode`, `failOnHttpStatus`, etc.) override them:
+Listas de exceções passadas via `test.use({ guardOptions })` são mescladas de forma **aditiva** com os padrões globais, enquanto opções escalares (`mode`, `failOnHttpStatus`, etc.) sobrescrevem os padrões:
 
 ```ts
 import { test, expect } from './fixtures';
 
-test.describe('legacy billing page', () => {
+test.describe('página legada de faturamento', () => {
   test.use({
     guardOptions: {
       ignoreConsole: ['Legacy chart deprecation warning'],
@@ -85,19 +86,19 @@ test.describe('legacy billing page', () => {
     },
   });
 
-  test('renders billing summary', async ({ page }) => {
+  test('exibe resumo de faturas', async ({ page }) => {
     await page.goto('/billing');
-    await expect(page.getByText('Invoices')).toBeVisible();
+    await expect(page.getByText('Faturas')).toBeVisible();
   });
 });
 ```
 
-### 4. Scoped or one-shot allowlists inside a test
+### 4. Exceções temporárias ou únicas dentro de um teste
 
-When a test step intentionally triggers an error (such as submitting an invalid form or testing retry behavior):
+Quando uma etapa do teste precisa provocar um erro esperado (ex.: validar cupom inválido ou testar *retry* após `503`):
 
 ```ts
-test('shows error banner on invalid coupon', async ({ page, runtimeGuard }) => {
+test('exibe erro ao aplicar cupom inválido', async ({ page, runtimeGuard }) => {
   await page.goto('/cart');
 
   await runtimeGuard.runAllowed(
@@ -106,15 +107,15 @@ test('shows error banner on invalid coupon', async ({ page, runtimeGuard }) => {
       ignoreConsole: ['Coupon validation failed'],
     },
     async () => {
-      await page.fill('#coupon', 'INVALID');
+      await page.fill('#coupon', 'INVALIDO');
       await page.click('#apply-coupon');
-      await expect(page.getByText('Invalid coupon')).toBeVisible();
+      await expect(page.getByText('Cupom inválido')).toBeVisible();
     },
   );
 });
 
-test('retries once after 503', async ({ page, runtimeGuard }) => {
-  // Consumes at most ONE 503 response on /api/orders; a second 503 still fails the test.
+test('tenta novamente após um único 503', async ({ page, runtimeGuard }) => {
+  // Consome no máximo UMA resposta 503 em /api/orders; uma segunda 503 ainda falha o teste.
   runtimeGuard.allowOnce({
     ignoreHttpErrors: [{ url: '/api/orders', status: 503 }],
   });
@@ -123,13 +124,13 @@ test('retries once after 503', async ({ page, runtimeGuard }) => {
 });
 ```
 
-### 5. Standalone usage (without fixture)
+### 5. Uso manual (sem fixture)
 
 ```ts
 import { test } from '@playwright/test';
 import { attachRuntimeGuard } from 'playwright-runtime-guard';
 
-test('manual guard', async ({ page }) => {
+test('guard manual', async ({ page }) => {
   const guard = attachRuntimeGuard(page, {
     failOnHttpStatus: '5xx',
   });
@@ -140,31 +141,31 @@ test('manual guard', async ({ page }) => {
 });
 ```
 
-## Configuration Options
+## Opções de configuração
 
-| Option | Default | Description |
+| Opção | Padrão | Descrição |
 | --- | --- | --- |
-| `mode` | `'fail'` (or `PW_GUARD_MODE`) | `'fail'` throws `RuntimeGuardError`, `'warn'` logs + annotates, `'off'` disables guard. |
-| `failOnConsoleError` | `true` | Capture and fail on matching console messages. |
-| `consoleTypes` | `['error']` | Console event types to capture (e.g., `['error', 'warning']`). |
-| `dedupeBrowserResourceConsoleErrors` | `true` | Suppress synthetic `"Failed to load resource: ..."` console errors so network status/failure rules & allowlists aren't bypassed or duplicated. |
-| `failOnPageError` | `true` | Capture uncaught exceptions and unhandled promise rejections. |
-| `failOnHttpStatus` | `'5xx'` | `'5xx'` / `true`, `'4xx+'`, `number[]`, `(status, ctx) => boolean`, or `false`. |
-| `failOnRequestFailed` | `true` | Capture network-level request failures (`net::ERR_CONNECTION_REFUSED`, etc.). |
-| `includeAbortedRequests` | `false` | Include `net::ERR_ABORTED` / `NS_BINDING_ABORTED` navigation cancellations. |
-| `captureResponseBody` | `true` | Capture up to 500 chars of JSON/text error response bodies. |
-| `trackPopups` | `true` | Automatically guard popups (`window.open`) and extra context pages. |
-| `attachReport` | `'on-violation'` | Attach `runtime-guard-report.json` and `.md` (`'on-violation' \| 'always' \| 'never'`). |
-| `failOnAlreadyFailedTest` | `false` | If `false`, attaches/logs violations without replacing a prior assertion/timeout error. |
-| `ignoreConsole` | `[]` | Allowlist rules for console messages. |
-| `ignorePageErrors` | `[]` | Allowlist rules for uncaught page errors. |
-| `ignoreHttpErrors` | `[]` | Allowlist rules for HTTP error responses. |
-| `ignoreRequestFailed` | `[]` | Allowlist rules for failed network requests. |
-| `onViolation` | `undefined` | Callback invoked on each unignored violation. |
+| `mode` | `'fail'` (ou `PW_GUARD_MODE`) | `'fail'` lança `RuntimeGuardError`, `'warn'` apenas registra aviso e anotação, `'off'` desativa o guard. |
+| `failOnConsoleError` | `true` | Captura e falha em mensagens de console correspondentes. |
+| `consoleTypes` | `['error']` | Tipos de mensagem de console monitorados (ex.: `['error', 'warning']`). |
+| `dedupeBrowserResourceConsoleErrors` | `true` | Suprime logs sintéticos `"Failed to load resource: ..."` para evitar duplicatas e respeitar `failOnHttpStatus` / `ignoreHttpErrors`. |
+| `failOnPageError` | `true` | Captura exceções não tratadas e *unhandled promise rejections*. |
+| `failOnHttpStatus` | `'5xx'` | `'5xx'` / `true`, `'4xx+'`, `number[]`, `(status, ctx) => boolean` ou `false`. |
+| `failOnRequestFailed` | `true` | Captura falhas na camada de rede (`net::ERR_CONNECTION_REFUSED`, etc.). |
+| `includeAbortedRequests` | `false` | Inclui requisições abortadas por navegação (`net::ERR_ABORTED` / `NS_BINDING_ABORTED`). |
+| `captureResponseBody` | `true` | Captura até 500 caracteres do corpo JSON/texto de respostas HTTP com erro. |
+| `trackPopups` | `true` | Monitora automaticamente popups (`window.open`) e páginas extras do contexto. |
+| `attachReport` | `'on-violation'` | Anexa `runtime-guard-report.json` e `.md` (`'on-violation' \| 'always' \| 'never'`). |
+| `failOnAlreadyFailedTest` | `false` | Se `false`, anexa/loga as violações sem esconder uma falha prévia de assertion ou timeout. |
+| `ignoreConsole` | `[]` | Regras de allowlist para mensagens de console. |
+| `ignorePageErrors` | `[]` | Regras de allowlist para exceções `pageerror`. |
+| `ignoreHttpErrors` | `[]` | Regras de allowlist para respostas HTTP com erro. |
+| `ignoreRequestFailed` | `[]` | Regras de allowlist para falhas de requisição de rede. |
+| `onViolation` | `undefined` | Callback executado a cada violação não ignorada. |
 
-## Example Failure Output
+## Exemplo de saída em caso de falha
 
-When a violation slips into a test, `playwright-runtime-guard` fails the test with a grouped summary and attaches `runtime-guard-report.json` and `runtime-guard-report.md` to the Playwright HTML Report:
+Quando uma violação ocorre durante o teste, o `playwright-runtime-guard` falha o teste com um resumo agrupado e anexa `runtime-guard-report.json` e `runtime-guard-report.md` ao Playwright HTML Report:
 
 ```text
 Error: [runtime-guard] Detected 2 runtime violation(s) (console: 1, pageerror: 0, http: 1, requestfailed: 0, ignored: 1)
@@ -179,22 +180,22 @@ HTTP Error Responses (1):
     body: {"error":"upstream timeout"}
 ```
 
-## Environment Variable
+## Variável de ambiente
 
-Temporarily switch enforcement mode across an entire run without editing code:
+Altere o modo de execução em toda a suíte sem editar código:
 
 ```bash
 PW_GUARD_MODE=warn npx playwright test
 PW_GUARD_MODE=off npx playwright test
 ```
 
-## Development
+## Desenvolvimento
 
 ```bash
 npm install
 npm test
 ```
 
-## License
+## Licença
 
 MIT
