@@ -1,0 +1,70 @@
+{
+  "name": "playwright-runtime-guard",
+  "version": "0.1.0",
+  "description": "Automatic Playwright fixture and guard that fails tests on console errors, uncaught page exceptions, 4xx/5xx HTTP responses, and failed network requests — with granular allowlists and rich failure reports.",
+  "keywords": [
+    "playwright",
+    "playwright-test",
+    "testing",
+    "e2e",
+    "console-error",
+    "network-error",
+    "pageerror",
+    "guard",
+    "fixture",
+    "qa"
+  ],
+  "license": "MIT",
+  "author": "Kyouz2148",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kyouz2148/playwright-runtime-guard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Kyouz2148/playwright-runtime-guard/issues"
+  },
+  "homepage": "https://github.com/Kyouz2148/playwright-runtime-guard#readme",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./fixture": {
+      "types": "./dist/fixture.d.ts",
+      "import": "./dist/fixture.js",
+      "require": "./dist/fixture.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "tsx --test tests/unit/*.test.ts",
+    "test:e2e": "playwright test tests/e2e/guard.spec.ts",
+    "test:integration": "tsx --test tests/integration/*.test.ts",
+    "test": "npm run typecheck && npm run build && npm run test:unit && npm run test:e2e && npm run test:integration",
+    "prepublishOnly": "npm run typecheck && npm run build"
+  },
+  "peerDependencies": {
+    "@playwright/test": ">=1.40.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@types/node": "^22.15.0",
+    "tsup": "^8.4.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}
